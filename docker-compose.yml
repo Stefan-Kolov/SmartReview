@@ -1,0 +1,40 @@
+services:
+  smartreview-db:
+    image: postgres:17.4
+    container_name: smartreview_db
+    restart: always
+    environment:
+      - POSTGRES_USER=sr_admin
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-sr_admin123}
+      - POSTGRES_DB=smartreview
+    ports:
+      - "54324:5432"
+    volumes:
+      - smartreview_data:/var/lib/postgresql/data
+    networks:
+      - smartreview_net
+
+  smartreview-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartreview_app
+    depends_on:
+      - smartreview-db
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://smartreview-db:5432/smartreview
+      - SPRING_DATASOURCE_USERNAME=sr_admin
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-sr_admin123}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - SPRING_JPA_SHOW_SQL=true
+    ports:
+      - "8080:8080"
+    networks:
+      - smartreview_net
+
+volumes:
+  smartreview_data:
+
+networks:
+  smartreview_net:
+    driver: bridge
