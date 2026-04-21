@@ -54,6 +54,11 @@ public class ReviewOrchestrator {
 
                 fileReview.getIssues().forEach(issue -> issue.setFileReview(fileReview));
                 fileReviews.add(fileReview);
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
 
             job.setFileReviews(fileReviews);

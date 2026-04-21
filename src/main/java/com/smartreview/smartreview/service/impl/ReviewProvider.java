@@ -19,7 +19,7 @@ import java.util.Map;
 
 @Slf4j
 @Service
-public class OpenAIReviewProvider implements CodeReviewProvider {
+public class ReviewProvider implements CodeReviewProvider {
 
     @Value("${groq.api.key}")
     private String apiKey;
