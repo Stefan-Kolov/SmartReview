@@ -11,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,50 +31,46 @@ public class ReviewOrchestrator {
                 .status(ReviewStatus.IN_PROGRESS)
                 .build();
         job = reviewJobRepository.save(job);
-        log.info("Started review job {} for {}", job.getId(), repoUrl);
 
-        Path clonedPath = null;
         try {
             Map<String, String> sourceFiles = repoService.cloneAndExtract(repoUrl);
+            if (sourceFiles.isEmpty()) return failJob(job, "No supported source files found in repository.");
 
-            if (sourceFiles.isEmpty()) {
-                return failJob(job, "No supported source files found in repository.");
-            }
+            List<Map.Entry<String, String>> entries = new ArrayList<>(sourceFiles.entrySet());
+            List<FileReview> allResults = new ArrayList<>();
 
-            List<FileReview> fileReviews = new ArrayList<>();
-            for (Map.Entry<String, String> entry : sourceFiles.entrySet()) {
-                String filePath = entry.getKey();
-                String content  = entry.getValue();
-                String language = repoService.detectLanguage(filePath);
+            int BATCH_SIZE = 5;
+            for (int i = 0; i < entries.size(); i += BATCH_SIZE) {
+                List<Map.Entry<String, String>> batch =
+                        entries.subList(i, Math.min(i + BATCH_SIZE, entries.size()));
 
-                log.debug("Sending {} to AI review...", filePath);
-                FileReview fileReview = codeReviewProvider.review(filePath, language, content);
-                fileReview.setReviewJob(job);
+                log.info("Processing batch {}/{}", (i/BATCH_SIZE)+1, (int)Math.ceil((double)entries.size()/BATCH_SIZE));
 
-                fileReview.getIssues().forEach(issue -> issue.setFileReview(fileReview));
-                fileReviews.add(fileReview);
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                List<FileReview> batchResults = codeReviewProvider.reviewBatch(batch, repoService);
+
+                for (FileReview fr : batchResults) {
+                    fr.setReviewJob(job);
+                    fr.getIssues().forEach(issue -> issue.setFileReview(fr));
+                    allResults.add(fr);
+                }
+
+                if (i + BATCH_SIZE < entries.size()) {
+                    log.debug("Batch complete. Cooling down for 1.5s to match TPM...");
+                    Thread.sleep(1500);
                 }
             }
 
-            job.setFileReviews(fileReviews);
-            aggregateStats(job, fileReviews);
+            job.setFileReviews(allResults);
+            aggregateStats(job, allResults);
             job.setStatus(ReviewStatus.COMPLETED);
             job.setCompletedAt(java.time.LocalDateTime.now());
 
-            log.info("Review job {} completed. Score: {}, Files: {}, Bugs: {}",
-                    job.getId(), job.getOverallScore(), job.getFilesReviewed(), job.getTotalBugs());
-
         } catch (Exception e) {
-            log.error("Review job {} failed: {}", job.getId(), e.getMessage(), e);
+            log.error("Review job failed: {}", e.getMessage());
             return failJob(job, e.getMessage());
         } finally {
             repoService.cleanup(repoUrl);
         }
-
         return reviewJobRepository.save(job);
     }
 

@@ -69,6 +69,11 @@ public class RepoService {
 
                 String relativePath = root.relativize(file).toString();
                 String content = Files.readString(file);
+
+                if (content.length() > 2500) {
+                    content = content.substring(0, 2500) + "\n... [Truncated for speed]";
+                }
+
                 files.put(relativePath, content);
 
                 return FileVisitResult.CONTINUE;

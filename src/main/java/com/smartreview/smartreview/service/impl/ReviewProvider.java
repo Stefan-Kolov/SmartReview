@@ -48,10 +48,41 @@ public class ReviewProvider implements CodeReviewProvider {
                 )
         );
 
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-        ResponseEntity<String> response = restTemplate.postForEntity(apiUrl, request, String.class);
+        ResponseEntity<String> response = callWithRetry(body, headers);
 
         return parseResponse(filePath, language, response.getBody());
+    }
+
+    private ResponseEntity<String> callWithRetry(Map<String, Object> body, HttpHeaders headers) {
+        int attempts = 0;
+        int maxRetries = 5;
+
+        while (true) {
+            try {
+                HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+                return restTemplate.postForEntity(apiUrl, request, String.class);
+
+            } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                if (e.getStatusCode().value() == 429 && ++attempts < maxRetries) {
+                    log.warn("Model limit hit. Attempt {}/{} - Waiting 5s...", attempts, maxRetries);
+                    try {
+                        Thread.sleep(5000);
+                        continue;
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                throw e;
+            } catch (Exception e) {
+                log.error("Network or unexpected error: {}", e.getMessage());
+                throw e;
+            }
+        }
+    }
+
+    @Override
+    public List<FileReview> reviewBatch(List<Map.Entry<String, String>> files, RepoService repoService) {
+        return files.stream().map(entry -> review(entry.getKey(), repoService.detectLanguage(entry.getKey()), entry.getValue())).toList();
     }
 
     private String buildPrompt(String filePath, String language, String content) {
