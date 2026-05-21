@@ -47,6 +47,10 @@ public class ReviewJob {
     @Builder.Default
     private List<FileReview> fileReviews = new ArrayList<>();
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
+
     @PrePersist
     public void prePersist() {
         createdAt = LocalDateTime.now();

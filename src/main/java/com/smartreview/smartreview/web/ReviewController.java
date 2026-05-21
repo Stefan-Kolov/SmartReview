@@ -1,18 +1,17 @@
 package com.smartreview.smartreview.web;
 
+import com.smartreview.smartreview.model.User;
 import com.smartreview.smartreview.model.dto.ReviewJobResponse;
 import com.smartreview.smartreview.model.dto.ReviewRequest;
-import com.smartreview.smartreview.model.ReviewJob;
-import com.smartreview.smartreview.repository.ReviewJobRepository;
-import com.smartreview.smartreview.service.impl.ReviewOrchestrator;
+import com.smartreview.smartreview.service.ReviewService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -20,30 +19,28 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 public class ReviewController {
-
-    private final ReviewOrchestrator reviewOrchestrator;
-    private final ReviewJobRepository reviewJobRepository;
+    private final ReviewService reviewService;
 
     @PostMapping
-    public ResponseEntity<ReviewJobResponse> submitReview(@Valid @RequestBody ReviewRequest request) {
-        log.info("Received review request for: {}", request.getRepoUrl());
-        ReviewJob job = reviewOrchestrator.startReview(request.getRepoUrl());
-        return ResponseEntity.ok(ReviewJobResponse.from(job));
+    public ResponseEntity<ReviewJobResponse> submitReview(
+            @Valid @RequestBody ReviewRequest request,
+            @AuthenticationPrincipal User user) {
+
+        log.info("Received review request from user: {} for: {}", user.getUsername(), request.getRepoUrl());
+        return ResponseEntity.ok(reviewService.submitReview(request, user));
     }
 
     @GetMapping
-    public ResponseEntity<List<ReviewJobResponse>> listReviews() {
-        List<ReviewJobResponse> reviews = reviewJobRepository.findAllByOrderByCreatedAtDesc()
-                .stream()
-                .map(ReviewJobResponse::from)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(reviews);
+    public ResponseEntity<List<ReviewJobResponse>> listReviews(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(reviewService.listMyReviews(user));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ReviewJobResponse> getReview(@PathVariable String id) {
-        return reviewJobRepository.findById(id)
-                .map(job -> ResponseEntity.ok(ReviewJobResponse.fromDetailed(job)))
-                .orElse(ResponseEntity.notFound().build());
+        try {
+            return ResponseEntity.ok(reviewService.getReviewDetails(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }

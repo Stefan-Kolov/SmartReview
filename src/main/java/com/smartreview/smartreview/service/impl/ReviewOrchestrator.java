@@ -3,6 +3,7 @@ package com.smartreview.smartreview.service.impl;
 import com.smartreview.smartreview.model.FileReview;
 import com.smartreview.smartreview.model.ReviewIssue;
 import com.smartreview.smartreview.model.ReviewJob;
+import com.smartreview.smartreview.model.User;
 import com.smartreview.smartreview.model.enums.ReviewStatus;
 import com.smartreview.smartreview.repository.ReviewJobRepository;
 import com.smartreview.smartreview.service.CodeReviewProvider;
@@ -25,9 +26,10 @@ public class ReviewOrchestrator {
     private final ReviewJobRepository reviewJobRepository;
 
     @Transactional
-    public ReviewJob startReview(String repoUrl) {
+    public ReviewJob startReview(String repoUrl, User user) {
         ReviewJob job = ReviewJob.builder()
                 .repoUrl(repoUrl)
+                .user(user)
                 .status(ReviewStatus.IN_PROGRESS)
                 .build();
         job = reviewJobRepository.save(job);
