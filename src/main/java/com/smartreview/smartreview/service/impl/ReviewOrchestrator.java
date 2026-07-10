@@ -52,6 +52,7 @@ public class ReviewOrchestrator {
 
                 for (FileReview fr : batchResults) {
                     fr.setReviewJob(job);
+                    fr.setContent(sourceFiles.get(fr.getFilePath()));
                     fr.getIssues().forEach(issue -> issue.setFileReview(fr));
                     allResults.add(fr);
                 }

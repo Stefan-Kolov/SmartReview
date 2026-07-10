@@ -64,6 +64,7 @@ public class ReviewJobResponse {
         private String language;
         private Integer fileScore;
         private String summary;
+        private String content;
         private List<IssueDto> issues;
 
         public static FileReviewDto from(FileReview fr) {
@@ -73,6 +74,7 @@ public class ReviewJobResponse {
                     .language(fr.getLanguage())
                     .fileScore(fr.getFileScore())
                     .summary(fr.getSummary())
+                    .content(fr.getContent())
                     .issues(fr.getIssues() == null ? List.of() :
                             fr.getIssues().stream().map(IssueDto::from).collect(Collectors.toList()))
                     .build();

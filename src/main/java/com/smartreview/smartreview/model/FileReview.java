@@ -32,6 +32,9 @@ public class FileReview {
 
     private Integer fileScore;
 
+    @Column(columnDefinition = "TEXT")
+    private String content;
+
     @Column(length = 2000)
     private String summary;
 
