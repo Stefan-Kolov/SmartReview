@@ -24,18 +24,127 @@ public class RepoService {
     @Value("${smartreview.repo.supported-extensions}")
     private List<String> supportedExtensions;
 
+    @Value("${smartreview.repo.max-cache-size-gb:5}")
+    private long maxCacheSizeGb;
+
     public Map<String, String> cloneAndExtract(String repoUrl) throws GitAPIException, IOException {
-        Path cloneTarget = prepareCloneDirectory();
-        log.info("Cloning {} into {}", repoUrl, cloneTarget);
+        Path cacheDir = getCacheDir(repoUrl);
 
-        try (Git git = Git.cloneRepository()
-                .setURI(repoUrl)
-                .setDirectory(cloneTarget.toFile())
-                .setDepth(1)
-                .call()) {
+        evictOldestIfNeeded();
 
-            log.info("Clone complete. Extracting source files...");
-            return extractSourceFiles(cloneTarget);
+        if (Files.exists(cacheDir)) {
+            if (hasNewCommits(cacheDir)) {
+                log.info("New commits found, pulling latest: {}", repoUrl);
+                pullLatest(cacheDir, repoUrl);
+            } else {
+                log.info("Cache hit, no new commits — reusing: {}", cacheDir);
+            }
+        } else {
+            log.info("Cache miss, cloning: {}", repoUrl);
+            Files.createDirectories(cacheDir.getParent());
+            Git.cloneRepository()
+                    .setURI(repoUrl)
+                    .setDirectory(cacheDir.toFile())
+                    .setDepth(1)
+                    .setTimeout(30)
+                    .call()
+                    .close();
+        }
+
+        log.info("Extracting source files from: {}", cacheDir);
+        return extractSourceFiles(cacheDir);
+    }
+
+    public void evictCache(String repoUrl) {
+        try {
+            Path cacheDir = getCacheDir(repoUrl);
+            if (Files.exists(cacheDir)) {
+                deleteDirectory(cacheDir);
+                log.info("Evicted cache for: {}", repoUrl);
+            }
+        } catch (IOException e) {
+            log.warn("Failed to evict cache for {}: {}", repoUrl, e.getMessage());
+        }
+    }
+
+    private Path getCacheDir(String repoUrl) {
+        String dirName = repoUrl
+                .replaceAll("https?://github\\.com/", "")
+                .replaceAll("[^a-zA-Z0-9_\\-]", "_")
+                .replaceAll("\\.git$", "");
+        return Path.of(cloneBaseDir, "cache", dirName);
+    }
+
+    private boolean hasNewCommits(Path cacheDir) {
+        try (Git git = Git.open(cacheDir.toFile())) {
+            git.fetch()
+                    .setRemote("origin")
+                    .setTimeout(15)
+                    .call();
+
+            String localCommit = git.getRepository()
+                    .resolve("HEAD")
+                    .getName();
+
+            String remoteCommit = git.getRepository()
+                    .resolve("origin/HEAD") != null
+                    ? git.getRepository().resolve("origin/HEAD").getName()
+                    : localCommit;
+
+            boolean hasNew = !localCommit.equals(remoteCommit);
+            log.info("Local: {} Remote: {} — {}",
+                    localCommit.substring(0, 7),
+                    remoteCommit.substring(0, 7),
+                    hasNew ? "new commits found" : "up to date");
+
+            return hasNew;
+
+        } catch (Exception e) {
+            log.warn("Could not check remote commits, will re-clone: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    private void pullLatest(Path cacheDir, String repoUrl) {
+        try (Git git = Git.open(cacheDir.toFile())) {
+            git.pull()
+                    .setTimeout(30)
+                    .call();
+            log.info("Pull complete for: {}", repoUrl);
+        } catch (Exception e) {
+            log.warn("Pull failed, evicting cache and will re-clone: {}", e.getMessage());
+            try {
+                deleteDirectory(cacheDir);
+            } catch (IOException ex) {
+                log.warn("Failed to delete corrupt cache: {}", ex.getMessage());
+            }
+        }
+    }
+
+    private void evictOldestIfNeeded() throws IOException {
+        Path cacheRoot = Path.of(cloneBaseDir, "cache");
+        if (!Files.exists(cacheRoot)) return;
+
+        long totalSize = Files.walk(cacheRoot)
+                .filter(Files::isRegularFile)
+                .mapToLong(p -> p.toFile().length())
+                .sum();
+
+        long maxBytes = maxCacheSizeGb * 1024 * 1024 * 1024;
+
+        if (totalSize > maxBytes) {
+            Files.list(cacheRoot)
+                    .filter(Files::isDirectory)
+                    .min(Comparator.comparingLong(p -> p.toFile().lastModified()))
+                    .ifPresent(oldest -> {
+                        try {
+                            log.info("Cache full ({} GB), evicting oldest: {}",
+                                    maxCacheSizeGb, oldest.getFileName());
+                            deleteDirectory(oldest);
+                        } catch (IOException e) {
+                            log.warn("Failed to evict oldest cache entry: {}", e.getMessage());
+                        }
+                    });
         }
     }
 
@@ -75,36 +184,12 @@ public class RepoService {
                 }
 
                 files.put(relativePath, content);
-
                 return FileVisitResult.CONTINUE;
             }
         });
 
         log.info("Extracted {} source files", files.size());
         return files;
-    }
-
-    public void cleanup(String repoUrl) {
-        try {
-            Path cloneTarget = resolveCloneDir(repoUrl);
-            if (Files.exists(cloneTarget)) {
-                deleteDirectory(cloneTarget);
-                log.info("Cleaned up cloned repo at {}", cloneTarget);
-            }
-        } catch (IOException e) {
-            log.warn("Failed to clean up cloned repo: {}", e.getMessage());
-        }
-    }
-
-    private Path prepareCloneDirectory() throws IOException {
-        Path base = Path.of(cloneBaseDir);
-        Files.createDirectories(base);
-        return Files.createTempDirectory(base, "repo-");
-    }
-
-    private Path resolveCloneDir(String repoUrl) {
-        String repoName = repoUrl.replaceAll("[^a-zA-Z0-9]", "_");
-        return Path.of(cloneBaseDir, repoName);
     }
 
     private void deleteDirectory(Path path) throws IOException {
@@ -114,6 +199,7 @@ public class RepoService {
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
+
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
                 Files.delete(dir);

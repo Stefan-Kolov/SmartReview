@@ -71,8 +71,6 @@ public class ReviewOrchestrator {
         } catch (Exception e) {
             log.error("Review job failed: {}", e.getMessage());
             return failJob(job, e.getMessage());
-        } finally {
-            repoService.cleanup(repoUrl);
         }
         return reviewJobRepository.save(job);
     }
