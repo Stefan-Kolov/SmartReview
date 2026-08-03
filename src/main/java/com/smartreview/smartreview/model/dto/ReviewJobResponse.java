@@ -25,6 +25,7 @@ public class ReviewJobResponse {
     private Integer totalStyleIssues;
     private Integer filesReviewed;
     private String errorMessage;
+    private String provider;
 
     private List<FileReviewDto> fileReviews;
 
@@ -40,6 +41,7 @@ public class ReviewJobResponse {
                 .totalSecurityIssues(job.getTotalSecurityIssues())
                 .totalStyleIssues(job.getTotalStyleIssues())
                 .filesReviewed(job.getFilesReviewed())
+                .provider(job.getProvider())
                 .errorMessage(job.getErrorMessage())
                 .build();
     }

@@ -23,9 +23,12 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public ReviewJobResponse submitReview(ReviewRequest request, User user) {
-        ReviewJob job = reviewOrchestrator.startReview(request.getRepoUrl(), user);
-        job.setUser(user);
-        reviewJobRepository.save(job);
+        ReviewJob job = reviewOrchestrator.startReview(
+                request.getRepoUrl(),
+                request.getProvider(),
+                request.getApiKey(),
+                user
+        );
         return ReviewJobResponse.from(job);
     }
 

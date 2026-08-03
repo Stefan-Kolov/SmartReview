@@ -51,6 +51,8 @@ public class ReviewJob {
     @JoinColumn(name = "user_id")
     private User user;
 
+    private String provider;
+
     @PrePersist
     public void prePersist() {
         createdAt = LocalDateTime.now();

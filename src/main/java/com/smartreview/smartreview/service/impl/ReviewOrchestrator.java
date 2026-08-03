@@ -7,6 +7,7 @@ import com.smartreview.smartreview.model.User;
 import com.smartreview.smartreview.model.enums.ReviewStatus;
 import com.smartreview.smartreview.repository.ReviewJobRepository;
 import com.smartreview.smartreview.service.CodeReviewProvider;
+import com.smartreview.smartreview.service.impl.providers.ReviewProviderFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,15 +23,17 @@ import java.util.Map;
 public class ReviewOrchestrator {
 
     private final RepoService repoService;
-    private final CodeReviewProvider codeReviewProvider;
     private final ReviewJobRepository reviewJobRepository;
+    private final ReviewProviderFactory providerFactory;
 
     @Transactional
-    public ReviewJob startReview(String repoUrl, User user) {
+    public ReviewJob startReview(String repoUrl, String providerName, String apiKey, User user) {
+        CodeReviewProvider reviewProvider = providerFactory.create(providerName, apiKey);
         ReviewJob job = ReviewJob.builder()
                 .repoUrl(repoUrl)
                 .user(user)
                 .status(ReviewStatus.IN_PROGRESS)
+                .provider(providerName)
                 .build();
         job = reviewJobRepository.save(job);
 
@@ -46,9 +49,10 @@ public class ReviewOrchestrator {
                 List<Map.Entry<String, String>> batch =
                         entries.subList(i, Math.min(i + BATCH_SIZE, entries.size()));
 
-                log.info("Processing batch {}/{}", (i/BATCH_SIZE)+1, (int)Math.ceil((double)entries.size()/BATCH_SIZE));
+                log.info("Processing batch {}/{}", (i / BATCH_SIZE) + 1,
+                        (int) Math.ceil((double) entries.size() / BATCH_SIZE));
 
-                List<FileReview> batchResults = codeReviewProvider.reviewBatch(batch, repoService);
+                List<FileReview> batchResults = reviewProvider.reviewBatch(batch, repoService);
 
                 for (FileReview fr : batchResults) {
                     fr.setReviewJob(job);
@@ -58,7 +62,7 @@ public class ReviewOrchestrator {
                 }
 
                 if (i + BATCH_SIZE < entries.size()) {
-                    log.debug("Batch complete. Cooling down for 1.5s to match TPM...");
+                    log.debug("Batch complete. Cooling down for 1.5s...");
                     Thread.sleep(1500);
                 }
             }
@@ -72,23 +76,21 @@ public class ReviewOrchestrator {
             log.error("Review job failed: {}", e.getMessage());
             return failJob(job, e.getMessage());
         }
+
         return reviewJobRepository.save(job);
     }
 
     private void aggregateStats(ReviewJob job, List<FileReview> fileReviews) {
-        int totalBugs      = 0;
-        int totalSecurity  = 0;
-        int totalStyle     = 0;
-        int scoreSum       = 0;
+        int totalBugs = 0, totalSecurity = 0, totalStyle = 0, scoreSum = 0;
 
         for (FileReview fr : fileReviews) {
             scoreSum += fr.getFileScore() != null ? fr.getFileScore() : 0;
             for (ReviewIssue issue : fr.getIssues()) {
                 switch (issue.getCategory()) {
-                    case BUG        -> totalBugs++;
-                    case SECURITY   -> totalSecurity++;
-                    case STYLE      -> totalStyle++;
-                    default         -> {}
+                    case BUG      -> totalBugs++;
+                    case SECURITY -> totalSecurity++;
+                    case STYLE    -> totalStyle++;
+                    default       -> {}
                 }
             }
         }

@@ -1,4 +1,4 @@
-package com.smartreview.smartreview.service.impl;
+package com.smartreview.smartreview.service.impl.providers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,10 +7,8 @@ import com.smartreview.smartreview.model.ReviewIssue;
 import com.smartreview.smartreview.model.enums.IssueCategory;
 import com.smartreview.smartreview.model.enums.Severity;
 import com.smartreview.smartreview.service.CodeReviewProvider;
+import com.smartreview.smartreview.service.impl.RepoService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
-import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
@@ -18,80 +16,39 @@ import java.util.List;
 import java.util.Map;
 
 @Slf4j
-@Service
-public class ReviewProvider implements CodeReviewProvider {
+public abstract class BaseReviewProvider implements CodeReviewProvider {
 
-    @Value("${groq.api.key}")
-    private String apiKey;
+    protected final RestTemplate restTemplate = new RestTemplate();
+    protected final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${groq.api.url}")
-    private String apiUrl;
-
-    @Value("${groq.model}")
-    private String model;
-
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    protected abstract String callApi(String prompt);
+    protected abstract String extractText(String rawResponse);
 
     @Override
     public FileReview review(String filePath, String language, String content) {
         log.debug("Reviewing file: {}", filePath);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
-
-        Map<String, Object> body = Map.of(
-                "model", model,
-                "messages", List.of(
-                        Map.of("role", "user", "content", buildPrompt(filePath, language, content))
-                )
-        );
-
-        ResponseEntity<String> response = callWithRetry(body, headers);
-
-        return parseResponse(filePath, language, response.getBody());
-    }
-
-    private ResponseEntity<String> callWithRetry(Map<String, Object> body, HttpHeaders headers) {
-        int attempts = 0;
-        int maxRetries = 5;
-
-        while (true) {
-            try {
-                HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-                return restTemplate.postForEntity(apiUrl, request, String.class);
-
-            } catch (org.springframework.web.client.HttpStatusCodeException e) {
-                if (e.getStatusCode().value() == 429 && ++attempts < maxRetries) {
-                    log.warn("Model limit hit. Attempt {}/{} - Waiting 5s...", attempts, maxRetries);
-                    try {
-                        Thread.sleep(5000);
-                        continue;
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-                throw e;
-            } catch (Exception e) {
-                log.error("Network or unexpected error: {}", e.getMessage());
-                throw e;
-            }
-        }
+        String prompt = buildPrompt(filePath, language, content);
+        String rawResponse = callApi(prompt);
+        return parseResponse(filePath, language, rawResponse);
     }
 
     @Override
     public List<FileReview> reviewBatch(List<Map.Entry<String, String>> files, RepoService repoService) {
-        return files.stream().map(entry -> review(entry.getKey(), repoService.detectLanguage(entry.getKey()), entry.getValue())).toList();
+        return files.stream()
+                .map(entry -> review(
+                        entry.getKey(),
+                        repoService.detectLanguage(entry.getKey()),
+                        entry.getValue()))
+                .toList();
     }
 
-    private String buildPrompt(String filePath, String language, String content) {
+    protected String buildPrompt(String filePath, String language, String content) {
         return """
                 You are a senior software engineer performing a thorough code review.
                 Analyse the following %s file and respond ONLY with valid JSON — no markdown, no explanation, just the JSON object.
- 
+
                 File: %s
- 
+
                 Your response must follow this exact schema:
                 {
                   "summary": "brief overall assessment of the file (2-3 sentences)",
@@ -106,32 +63,30 @@ public class ReviewProvider implements CodeReviewProvider {
                     }
                   ]
                 }
- 
+
                 Scoring guide:
                 - 90-100: excellent, production-ready
                 - 70-89:  good, minor improvements needed
                 - 50-69:  average, several issues to address
                 - 30-49:  poor, significant problems
                 - 0-29:   critical issues, major rework needed
- 
+
                 Focus on:
                 - BUG: logic errors, null pointer risks, off-by-one errors, incorrect error handling
                 - SECURITY: SQL injection, XSS, hardcoded secrets, insecure deserialization, missing auth checks
                 - STYLE: naming conventions, code duplication, overly complex methods, missing documentation
                 - SUGGESTION: performance improvements, better patterns, modern language features
- 
+
                 Code to review:
-                ```%s
+```%s
                 %s
-                ```
+```
                 """.formatted(language, filePath, language.toLowerCase(), content);
     }
 
-    private FileReview parseResponse(String filePath, String language, String rawResponse) {
+    protected FileReview parseResponse(String filePath, String language, String rawResponse) {
         try {
-            JsonNode root = objectMapper.readTree(rawResponse);
-            String text = root.path("choices").get(0).path("message").path("content").asText();
-
+            String text = extractText(rawResponse);
             String cleaned = text.replaceAll("```json", "").replaceAll("```", "").trim();
             JsonNode result = objectMapper.readTree(cleaned);
 
@@ -149,7 +104,6 @@ public class ReviewProvider implements CodeReviewProvider {
                     fileReview.getIssues().add(parseIssue(issueNode, fileReview));
                 }
             }
-
             return fileReview;
 
         } catch (Exception e) {
@@ -170,7 +124,6 @@ public class ReviewProvider implements CodeReviewProvider {
         if (!lineNode.isNull() && !lineNode.isMissingNode()) {
             lineNumber = lineNode.asInt();
         }
-
         return ReviewIssue.builder()
                 .fileReview(parent)
                 .category(parseCategory(node.path("category").asText()))

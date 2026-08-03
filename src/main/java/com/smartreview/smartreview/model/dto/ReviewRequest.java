@@ -13,4 +13,9 @@ public class ReviewRequest {
             message = "Please provide a valid Git repository URL"
     )
     private String repoUrl;
+
+    @NotBlank(message = "Provider is required")
+    private String provider;
+
+    private String apiKey;
 }
