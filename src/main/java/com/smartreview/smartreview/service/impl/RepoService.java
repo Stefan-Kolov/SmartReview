@@ -179,7 +179,12 @@ public class RepoService {
                 String relativePath = root.relativize(file).toString();
                 String content = Files.readString(file);
 
-                if (content.length() > 2500) {
+                if (!shouldReview(relativePath, fileName, content)) {
+                    log.debug("Skipping low-value file: {}", relativePath);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                if (content.length() > 1500) {
                     content = content.substring(0, 2500) + "\n... [Truncated for speed]";
                 }
 
@@ -220,5 +225,32 @@ public class RepoService {
         if (filePath.endsWith(".rb"))    return "Ruby";
         if (filePath.endsWith(".php"))   return "PHP";
         return "Unknown";
+    }
+
+    private boolean shouldReview(String path, String fileName, String content) {
+        if (path.contains("/test/") || path.contains("\\test\\")) return false;
+        if (fileName.contains("Test") || fileName.contains("Spec")
+                || fileName.contains(".test.") || fileName.contains(".spec.")) return false;
+
+        if (path.contains("generated") || path.contains("migration")) return false;
+
+        if (fileName.equals("application.properties")
+                || fileName.equals("application.yml")
+                || fileName.equals("application.yaml")
+                || fileName.equals("pom.xml")
+                || fileName.equals("build.gradle")
+                || fileName.equals("package.json")
+                || fileName.equals("package-lock.json")
+                || fileName.equals("vite.config.js")
+                || fileName.equals("vite.config.ts")
+                || fileName.equals(".eslintrc.js")
+                || fileName.equals("tailwind.config.js")) return false;
+
+        long lineCount = content.lines().count();
+        if (lineCount < 15) return false;
+
+        boolean looksLikeDto = content.contains("record ") && lineCount < 30;
+        boolean looksLikeEnum = content.contains("enum ") && lineCount < 40;
+        return !looksLikeDto && !looksLikeEnum;
     }
 }

@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 
 @Slf4j
 @Service
@@ -25,6 +27,8 @@ public class ReviewOrchestrator {
     private final RepoService repoService;
     private final ReviewJobRepository reviewJobRepository;
     private final ReviewProviderFactory providerFactory;
+    private static final int MAX_CONCURRENT = 3;
+    private final Semaphore semaphore = new Semaphore(MAX_CONCURRENT);
 
     @Transactional
     public ReviewJob startReview(String repoUrl, String providerName, String apiKey, User user) {
@@ -42,29 +46,36 @@ public class ReviewOrchestrator {
             if (sourceFiles.isEmpty()) return failJob(job, "No supported source files found in repository.");
 
             List<Map.Entry<String, String>> entries = new ArrayList<>(sourceFiles.entrySet());
-            List<FileReview> allResults = new ArrayList<>();
+            log.info("Starting parallel review of {} files (max {} concurrent)", entries.size(), MAX_CONCURRENT);
 
-            int BATCH_SIZE = 5;
-            for (int i = 0; i < entries.size(); i += BATCH_SIZE) {
-                List<Map.Entry<String, String>> batch =
-                        entries.subList(i, Math.min(i + BATCH_SIZE, entries.size()));
+            List<CompletableFuture<FileReview>> futures = new ArrayList<>(entries.stream()
+                    .map(entry -> CompletableFuture.supplyAsync(() -> {
+                        try {
+                            semaphore.acquire();
+                            try {
+                                return reviewProvider.review(
+                                        entry.getKey(),
+                                        repoService.detectLanguage(entry.getKey()),
+                                        entry.getValue()
+                                );
+                            } finally {
+                                semaphore.release();
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException(e);
+                        }
+                    }))
+                    .toList());
 
-                log.info("Processing batch {}/{}", (i / BATCH_SIZE) + 1,
-                        (int) Math.ceil((double) entries.size() / BATCH_SIZE));
+            List<FileReview> allResults = new ArrayList<>(futures.stream()
+                    .map(CompletableFuture::join)
+                    .toList());
 
-                List<FileReview> batchResults = reviewProvider.reviewBatch(batch, repoService);
-
-                for (FileReview fr : batchResults) {
-                    fr.setReviewJob(job);
-                    fr.setContent(sourceFiles.get(fr.getFilePath()));
-                    fr.getIssues().forEach(issue -> issue.setFileReview(fr));
-                    allResults.add(fr);
-                }
-
-                if (i + BATCH_SIZE < entries.size()) {
-                    log.debug("Batch complete. Cooling down for 1.5s...");
-                    Thread.sleep(1500);
-                }
+            for (FileReview fr : allResults) {
+                fr.setReviewJob(job);
+                fr.setContent(sourceFiles.get(fr.getFilePath()));
+                fr.getIssues().forEach(issue -> issue.setFileReview(fr));
             }
 
             job.setFileReviews(allResults);
