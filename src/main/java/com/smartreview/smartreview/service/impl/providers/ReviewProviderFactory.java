@@ -9,26 +9,42 @@ public class ReviewProviderFactory {
 
     @Value("${groq.api.key:}")
     private String groqKey;
+    @Value("${groq.api.url}")
+    private String groqUrl;
+    @Value("${groq.model}")
+    private String groqModel;
 
     @Value("${anthropic.api.key:}")
     private String anthropicKey;
+    @Value("${anthropic.api.url}")
+    private String anthropicUrl;
+    @Value("${anthropic.model}")
+    private String anthropicModel;
 
     @Value("${openai.api.key:}")
     private String openaiKey;
+    @Value("${openai.api.url}")
+    private String openaiUrl;
+    @Value("${openai.model}")
+    private String openaiModel;
 
     @Value("${gemini.api.key:}")
     private String geminiKey;
+    @Value("${gemini.api.url}")
+    private String geminiUrl;
+    @Value("${gemini.model}")
+    private String geminiModel;
 
     public CodeReviewProvider create(String providerName, String userApiKey) {
         return switch (providerName.toUpperCase()) {
             case "GROQ"      -> new GroqReviewProvider(
-                    resolveKey(userApiKey, groqKey), "llama-3.3-70b-versatile");
+                    resolveKey(userApiKey, groqKey), groqUrl, groqModel);
             case "ANTHROPIC" -> new AnthropicReviewProvider(
-                    resolveKey(userApiKey, anthropicKey), "claude-haiku-4-5");
+                    resolveKey(userApiKey, anthropicKey), anthropicUrl, anthropicModel);
             case "OPENAI"    -> new OpenAiReviewProvider(
-                    resolveKey(userApiKey, openaiKey), "gpt-4o-mini");
+                    resolveKey(userApiKey, openaiKey), openaiUrl, openaiModel);
             case "GEMINI"    -> new GeminiReviewProvider(
-                    resolveKey(userApiKey, geminiKey), "gemini-1.5-flash");
+                    resolveKey(userApiKey, geminiKey), geminiUrl, geminiModel);
             default -> throw new IllegalArgumentException("Unknown provider: " + providerName);
         };
     }

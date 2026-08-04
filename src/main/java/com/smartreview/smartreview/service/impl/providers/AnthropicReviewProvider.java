@@ -9,12 +9,13 @@ import java.util.Map;
 @Slf4j
 public class AnthropicReviewProvider extends BaseReviewProvider {
 
-    private static final String API_URL = "https://api.anthropic.com/v1/messages";
+    private final String apiUrl;
     private final String apiKey;
     private final String model;
 
-    public AnthropicReviewProvider(String apiKey, String model) {
+    public AnthropicReviewProvider(String apiKey, String apiUrl, String model) {
         this.apiKey = apiKey;
+        this.apiUrl = apiUrl;
         this.model = model;
     }
 
@@ -33,7 +34,7 @@ public class AnthropicReviewProvider extends BaseReviewProvider {
         );
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-        return restTemplate.postForEntity(API_URL, request, String.class).getBody();
+        return restTemplate.postForEntity(apiUrl, request, String.class).getBody();
     }
 
     @Override

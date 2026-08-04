@@ -9,12 +9,12 @@ import java.util.Map;
 @Slf4j
 public class GeminiReviewProvider extends BaseReviewProvider {
 
-    private static final String API_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s";
+    private final String apiUrl;
     private final String apiKey;
     private final String model;
 
-    public GeminiReviewProvider(String apiKey, String model) {
+    public GeminiReviewProvider(String apiUrl, String apiKey, String model) {
+        this.apiUrl = apiUrl;
         this.apiKey = apiKey;
         this.model = model;
     }
@@ -30,7 +30,7 @@ public class GeminiReviewProvider extends BaseReviewProvider {
                 )
         );
 
-        String url = API_URL.formatted(model, apiKey);
+        String url = apiUrl.formatted(model, apiKey);
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
         return restTemplate.postForEntity(url, request, String.class).getBody();
     }

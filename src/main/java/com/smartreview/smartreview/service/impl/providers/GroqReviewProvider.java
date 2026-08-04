@@ -10,12 +10,13 @@ import java.util.Map;
 @Slf4j
 public class GroqReviewProvider extends BaseReviewProvider {
 
-    private static final String API_URL = "https://api.groq.com/openai/v1/chat/completions";
+    private final String apiUrl;
     private final String apiKey;
     private final String model;
 
-    public GroqReviewProvider(String apiKey, String model) {
+    public GroqReviewProvider(String apiKey, String apiUrl, String model) {
         this.apiKey = apiKey;
+        this.apiUrl = apiUrl;
         this.model = model;
     }
 
@@ -50,7 +51,7 @@ public class GroqReviewProvider extends BaseReviewProvider {
         while (true) {
             try {
                 HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-                return restTemplate.postForEntity(API_URL, request, String.class).getBody();
+                return restTemplate.postForEntity(apiUrl, request, String.class).getBody();
             } catch (HttpStatusCodeException e) {
                 if (e.getStatusCode().value() == 429 && ++attempts < maxRetries) {
                     log.warn("Rate limit hit. Attempt {}/{}. Waiting 5s...", attempts, maxRetries);
