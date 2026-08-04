@@ -26,6 +26,7 @@ public class ReviewJobResponse {
     private Integer filesReviewed;
     private String errorMessage;
     private String provider;
+    private Long durationSeconds;
 
     private List<FileReviewDto> fileReviews;
 
@@ -42,6 +43,8 @@ public class ReviewJobResponse {
                 .totalStyleIssues(job.getTotalStyleIssues())
                 .filesReviewed(job.getFilesReviewed())
                 .provider(job.getProvider())
+                .durationSeconds(job.getCompletedAt() != null && job.getCreatedAt() != null
+                        ? java.time.Duration.between(job.getCreatedAt(), job.getCompletedAt()).getSeconds() : null)
                 .errorMessage(job.getErrorMessage())
                 .build();
     }

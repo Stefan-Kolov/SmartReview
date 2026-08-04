@@ -185,7 +185,7 @@ public class RepoService {
                 }
 
                 if (content.length() > 1500) {
-                    content = content.substring(0, 2500) + "\n... [Truncated for speed]";
+                    content = content.substring(0, 1500) + "\n... [Truncated for speed]";
                 }
 
                 files.put(relativePath, content);

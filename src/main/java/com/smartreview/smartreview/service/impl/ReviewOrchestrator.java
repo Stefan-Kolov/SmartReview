@@ -8,10 +8,11 @@ import com.smartreview.smartreview.model.enums.ReviewStatus;
 import com.smartreview.smartreview.repository.ReviewJobRepository;
 import com.smartreview.smartreview.service.CodeReviewProvider;
 import com.smartreview.smartreview.service.impl.providers.ReviewProviderFactory;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,46 +28,87 @@ public class ReviewOrchestrator {
     private final RepoService repoService;
     private final ReviewJobRepository reviewJobRepository;
     private final ReviewProviderFactory providerFactory;
+    private final ReviewProgressService progressService;
+
     private static final int MAX_CONCURRENT = 3;
     private final Semaphore semaphore = new Semaphore(MAX_CONCURRENT);
 
     @Transactional
-    public ReviewJob startReview(String repoUrl, String providerName, String apiKey, User user) {
-        CodeReviewProvider reviewProvider = providerFactory.create(providerName, apiKey);
+    public ReviewJob createJob(String repoUrl, String providerName, User user) {
         ReviewJob job = ReviewJob.builder()
                 .repoUrl(repoUrl)
                 .user(user)
-                .status(ReviewStatus.IN_PROGRESS)
+                .status(ReviewStatus.PENDING)
                 .provider(providerName)
                 .build();
-        job = reviewJobRepository.save(job);
+        return reviewJobRepository.save(job);
+    }
+
+    @Async("reviewTaskExecutor")
+    public void startReviewAsync(String jobId, String repoUrl, String providerName, String apiKey) {
+        CodeReviewProvider reviewProvider = providerFactory.create(providerName, apiKey);
+
+        log.info("Starting review [jobId={}] using provider: {}", jobId, providerName);
+
+        ReviewJob job = reviewJobRepository.findById(jobId).orElseThrow();
+        job.setStatus(ReviewStatus.IN_PROGRESS);
+        reviewJobRepository.save(job);
 
         try {
+            progressService.sendProgress(jobId, 0, 0, "Cloning repository...", "CLONING");
+
             Map<String, String> sourceFiles = repoService.cloneAndExtract(repoUrl);
-            if (sourceFiles.isEmpty()) return failJob(job, "No supported source files found in repository.");
+
+            if (sourceFiles.isEmpty()) {
+                failJob(job, "No supported source files found.");
+                progressService.sendError(jobId, "No supported source files found.");
+                return;
+            }
 
             List<Map.Entry<String, String>> entries = new ArrayList<>(sourceFiles.entrySet());
-            log.info("Starting parallel review of {} files (max {} concurrent)", entries.size(), MAX_CONCURRENT);
+            int total = entries.size();
 
-            List<CompletableFuture<FileReview>> futures = new ArrayList<>(entries.stream()
-                    .map(entry -> CompletableFuture.supplyAsync(() -> {
+            progressService.sendProgress(jobId, 0, total, "Starting review...", "REVIEWING");
+
+            List<CompletableFuture<FileReview>> futures = new ArrayList<>();
+            int[] processed = {0};
+
+            for (Map.Entry<String, String> entry : entries) {
+                CompletableFuture<FileReview> future = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        semaphore.acquire();
                         try {
-                            semaphore.acquire();
-                            try {
-                                return reviewProvider.review(
-                                        entry.getKey(),
-                                        repoService.detectLanguage(entry.getKey()),
-                                        entry.getValue()
-                                );
-                            } finally {
-                                semaphore.release();
-                            }
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            throw new RuntimeException(e);
+                            progressService.sendProgress(
+                                    jobId,
+                                    processed[0],
+                                    total,
+                                    entry.getKey().split("[/\\\\]")[entry.getKey().split("[/\\\\]").length - 1],
+                                    "REVIEWING"
+                            );
+                            FileReview result = reviewProvider.review(
+                                    entry.getKey(),
+                                    repoService.detectLanguage(entry.getKey()),
+                                    entry.getValue()
+                            );
+                            processed[0]++;
+                            progressService.sendProgress(
+                                    jobId,
+                                    processed[0],
+                                    total,
+                                    entry.getKey().split("[/\\\\]")[entry.getKey().split("[/\\\\]").length - 1],
+                                    "REVIEWING"
+                            );
+                            return result;
+                        } finally {
+                            semaphore.release();
                         }
-                    }))
-                    .toList());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException(e);
+                    }
+                });
+                futures.add(future);
+            }
 
             List<FileReview> allResults = new ArrayList<>(futures.stream()
                     .map(CompletableFuture::join)
@@ -82,13 +124,15 @@ public class ReviewOrchestrator {
             aggregateStats(job, allResults);
             job.setStatus(ReviewStatus.COMPLETED);
             job.setCompletedAt(java.time.LocalDateTime.now());
+            reviewJobRepository.save(job);
+
+            progressService.sendComplete(jobId);
 
         } catch (Exception e) {
             log.error("Review job failed: {}", e.getMessage());
-            return failJob(job, e.getMessage());
+            failJob(job, e.getMessage());
+            progressService.sendError(jobId, "Review failed. Please try again.");
         }
-
-        return reviewJobRepository.save(job);
     }
 
     private void aggregateStats(ReviewJob job, List<FileReview> fileReviews) {
@@ -114,10 +158,12 @@ public class ReviewOrchestrator {
         job.setOverallScore(fileCount > 0 ? scoreSum / fileCount : 0);
     }
 
-    private ReviewJob failJob(ReviewJob job, String reason) {
+    private void failJob(ReviewJob job, String reason) {
+        String msg = reason != null && reason.length() > 100
+                ? reason.substring(0, 100) + "..." : reason;
         job.setStatus(ReviewStatus.FAILED);
-        job.setErrorMessage(reason);
+        job.setErrorMessage(msg);
         job.setCompletedAt(java.time.LocalDateTime.now());
-        return reviewJobRepository.save(job);
+        reviewJobRepository.save(job);
     }
 }

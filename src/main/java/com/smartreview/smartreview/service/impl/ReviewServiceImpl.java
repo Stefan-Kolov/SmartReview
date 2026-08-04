@@ -21,13 +21,18 @@ public class ReviewServiceImpl implements ReviewService {
     private final ReviewJobRepository reviewJobRepository;
 
     @Override
-    @Transactional
     public ReviewJobResponse submitReview(ReviewRequest request, User user) {
-        ReviewJob job = reviewOrchestrator.startReview(
+        ReviewJob job = reviewOrchestrator.createJob(
                 request.getRepoUrl(),
                 request.getProvider(),
-                request.getApiKey(),
                 user
+        );
+
+        reviewOrchestrator.startReviewAsync(
+                job.getId(),
+                request.getRepoUrl(),
+                request.getProvider(),
+                request.getApiKey()
         );
         return ReviewJobResponse.from(job);
     }
