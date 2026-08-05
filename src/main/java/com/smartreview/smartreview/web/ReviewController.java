@@ -52,4 +52,10 @@ public class ReviewController {
     public SseEmitter streamProgress(@PathVariable String id) {
         return reviewProgressService.createEmitter(id);
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteReview(@PathVariable String id) {
+        reviewService.deleteReview(id);
+        return ResponseEntity.noContent().build();
+    }
 }

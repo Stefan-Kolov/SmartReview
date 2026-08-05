@@ -10,4 +10,5 @@ public interface ReviewService {
     ReviewJobResponse submitReview(ReviewRequest request, User user);
     List<ReviewJobResponse> listMyReviews(User user);
     ReviewJobResponse getReviewDetails(String id);
+    void deleteReview(String id);
 }

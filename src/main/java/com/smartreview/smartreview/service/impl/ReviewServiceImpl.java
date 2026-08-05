@@ -53,4 +53,12 @@ public class ReviewServiceImpl implements ReviewService {
                 .map(ReviewJobResponse::fromDetailed)
                 .orElseThrow(() -> new ResourceNotFoundException("Review job with ID " + id + " was not found."));
     }
+
+    @Override
+    @Transactional
+    public void deleteReview(String id) {
+        ReviewJob job = reviewJobRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Review job with ID " + id + " was not found."));
+        reviewJobRepository.delete(job);
+    }
 }
