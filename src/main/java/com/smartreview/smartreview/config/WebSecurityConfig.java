@@ -33,7 +33,8 @@ public class WebSecurityConfig {
         CorsConfiguration cors = new CorsConfiguration();
 
         cors.setAllowedOrigins(List.of(
-                "http://localhost:3000"
+                "http://localhost:3000",
+                "https://smart-review-rho.vercel.app"
         ));
 
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
