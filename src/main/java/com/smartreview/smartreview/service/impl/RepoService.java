@@ -27,6 +27,9 @@ public class RepoService {
     @Value("${smartreview.repo.max-cache-size-gb:5}")
     private long maxCacheSizeGb;
 
+    @Value("${smartreview.repo.max-content-length:8000}")
+    private int maxContentLength;
+
     public Map<String, String> cloneAndExtract(String repoUrl) throws GitAPIException, IOException {
         Path cacheDir = getCacheDir(repoUrl);
 
@@ -184,8 +187,8 @@ public class RepoService {
                     return FileVisitResult.CONTINUE;
                 }
 
-                if (content.length() > 1500) {
-                    content = content.substring(0, 1500) + "\n... [Truncated for speed]";
+                if (content.length() > maxContentLength) {
+                    content = content.substring(0, maxContentLength) + "\n... [Truncated for speed]";
                 }
 
                 files.put(relativePath, content);

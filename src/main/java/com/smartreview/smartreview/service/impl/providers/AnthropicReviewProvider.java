@@ -28,7 +28,7 @@ public class AnthropicReviewProvider extends BaseReviewProvider {
 
         Map<String, Object> body = Map.of(
                 "model", model,
-                "max_tokens", 2048,
+                "max_tokens", 4096,
                 "system", "You are a senior software engineer. Respond ONLY with valid JSON — no markdown, no explanation.",
                 "messages", List.of(Map.of("role", "user", "content", prompt))
         );
