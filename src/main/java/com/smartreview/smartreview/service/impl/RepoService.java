@@ -69,7 +69,7 @@ public class RepoService {
 
     private Path getCacheDir(String repoUrl) {
         String dirName = repoUrl
-                .replaceAll("https?://github\\.com/", "")
+                .replaceAll("https?://(github|gitlab|bitbucket)\\.(com|org)/", "")
                 .replaceAll("[^a-zA-Z0-9_\\-]", "_")
                 .replaceAll("\\.git$", "");
         return Path.of(cloneBaseDir, "cache", dirName);
