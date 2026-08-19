@@ -2,7 +2,6 @@ package com.smartreview.smartreview.service.impl.providers;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
-import org.springframework.web.client.HttpStatusCodeException;
 
 import java.util.List;
 import java.util.Map;
@@ -31,7 +30,8 @@ public class GroqReviewProvider extends BaseReviewProvider {
                 "messages", List.of(Map.of("role", "user", "content", prompt))
         );
 
-        return callWithRetry(headers, body);
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        return restTemplate.postForEntity(apiUrl, request, String.class).getBody();
     }
 
     @Override
@@ -42,22 +42,6 @@ public class GroqReviewProvider extends BaseReviewProvider {
                     .path("message").path("content").asText();
         } catch (Exception e) {
             throw new RuntimeException("Failed to extract text from Groq response", e);
-        }
-    }
-
-    private String callWithRetry(HttpHeaders headers, Map<String, Object> body) {
-        int attempts = 0;
-        int maxRetries = 5;
-        while (true) {
-            try {
-                HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-                return restTemplate.postForEntity(apiUrl, request, String.class).getBody();
-            } catch (HttpStatusCodeException e) {
-                if (e.getStatusCode().value() == 429 && ++attempts < maxRetries) {
-                    log.warn("Rate limit hit. Attempt {}/{}. Waiting 5s...", attempts, maxRetries);
-                    try { Thread.sleep(5000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                } else throw e;
-            }
         }
     }
 }

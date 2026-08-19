@@ -13,9 +13,9 @@ public class GeminiReviewProvider extends BaseReviewProvider {
     private final String apiKey;
     private final String model;
 
-    public GeminiReviewProvider(String apiUrl, String apiKey, String model) {
-        this.apiUrl = apiUrl;
+    public GeminiReviewProvider(String apiKey, String apiUrl, String model) {
         this.apiKey = apiKey;
+        this.apiUrl = apiUrl;
         this.model = model;
     }
 

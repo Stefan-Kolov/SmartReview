@@ -13,9 +13,9 @@ public class OpenAiReviewProvider extends BaseReviewProvider {
     private final String apiKey;
     private final String model;
 
-    public OpenAiReviewProvider(String apiUrl, String apiKey, String model) {
-        this.apiUrl = apiUrl;
+    public OpenAiReviewProvider(String apiKey, String apiUrl, String model) {
         this.apiKey = apiKey;
+        this.apiUrl = apiUrl;
         this.model = model;
     }
 
