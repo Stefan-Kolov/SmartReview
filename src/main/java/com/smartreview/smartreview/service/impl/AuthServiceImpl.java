@@ -5,6 +5,7 @@ import com.smartreview.smartreview.model.User;
 import com.smartreview.smartreview.model.dto.LoginRequest;
 import com.smartreview.smartreview.model.dto.RegisterRequest;
 import com.smartreview.smartreview.model.dto.AuthResponse;
+import com.smartreview.smartreview.model.exceptions.EmailAlreadyExistsException;
 import com.smartreview.smartreview.model.exceptions.InvalidCredentialsException;
 import com.smartreview.smartreview.model.exceptions.UsernameAlreadyExistsException;
 import com.smartreview.smartreview.repository.UserRepository;
@@ -25,6 +26,10 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.findByUsername(request.getUsername()).isPresent()) {
             throw new UsernameAlreadyExistsException("Username is already taken.");
+        }
+
+        if (userRepository.findByEmail(request.getEmail()).isPresent()){
+            throw new EmailAlreadyExistsException("Email is already taken.");
         }
 
         User user = User.builder()
