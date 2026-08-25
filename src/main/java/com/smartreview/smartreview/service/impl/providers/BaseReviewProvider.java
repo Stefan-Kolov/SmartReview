@@ -43,11 +43,17 @@ public abstract class BaseReviewProvider implements CodeReviewProvider {
     }
 
     protected String buildPrompt(String filePath, String language, String content) {
+        String numberedContent = numberLines(content);
+
         return """
                 You are a senior software engineer performing a thorough code review.
                 Analyse the following %s file and respond ONLY with valid JSON — no markdown, no explanation, just the JSON object.
 
                 File: %s
+                
+                The code below has each line prefixed with its exact line number followed by a colon,
+                e.g. "42: private String name;". When you report an issue, copy the line number exactly
+                as shown in that prefix — do NOT count lines yourself, use the given number.
 
                 Your response must follow this exact schema:
                 {
@@ -77,11 +83,18 @@ public abstract class BaseReviewProvider implements CodeReviewProvider {
                 - STYLE: naming conventions, code duplication, overly complex methods, missing documentation
                 - SUGGESTION: performance improvements, better patterns, modern language features
 
-                Code to review:
-```%s
+                Code to review (line numbers included, do not include them in suggestedFix):
                 %s
-```
-                """.formatted(language, filePath, language.toLowerCase(), content);
+                """.formatted(language, filePath, numberedContent);
+    }
+
+    private String numberLines(String content) {
+        String[] lines = content.split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            sb.append(i + 1).append(": ").append(lines[i]).append("\n");
+        }
+        return sb.toString();
     }
 
     protected FileReview parseResponse(String filePath, String language, String rawResponse) {
